@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+           xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
+           xsi:type="TaskPaneApp">
+
+  <!-- Identificación Única del Complemento -->
+  <Id>0506e5c0-1db0-4bcf-a514-9588a076d2c0</Id>
+  <Version>1.0.0.0</Version>
+  <ProviderName>INTEF</ProviderName>
+  <DefaultLocale>es-ES</DefaultLocale>
+  <DisplayName DefaultValue="SuperCopy Pro" />
+  <Description DefaultValue="Exporta rangos de Excel con formato limpio para WhatsApp, Imagen y Correo." />
+  <IconUrl DefaultValue="https://oscarnorniella.github.io/Excel-copiado/assets/icon-32.png" />
+  <HighResolutionIconUrl DefaultValue="https://oscarnorniella.github.io/Excel-copiado/assets/icon-80.png" />
+  <SupportUrl DefaultValue="https://oscarnorniella.github.io/Excel-copiado/" />
+
+  <!-- Dominios autorizados -->
+  <AppDomains>
+    <AppDomain>https://oscarnorniella.github.io/Excel-copiado/</AppDomain>
+  </AppDomains>
+
+  <!-- Hosts donde funciona (Excel) -->
+  <Hosts>
+    <Host Name="Workbook" />
+  </Hosts>
+
+  <DefaultSettings>
+    <SourceLocation DefaultValue="https://oscarnorniella.github.io/Excel-copiado/index.html" />
+  </DefaultSettings>
+
+  <Permissions>ReadWriteDocument</Permissions>
+
+  <!-- Configuración de la Cinta de Opciones (Ribbon) -->
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <Hosts>
+      <Host xsi:type="Workbook">
+        <DesktopFormFactor>
+          <!-- Pestaña en la cinta -->
+          <ExtensionPoint xsi:type="PrimaryCommandSurface">
+            <CustomTab id="TabCustom">
+              <Group id="GroupCustom">
+                <Label resid="groupLabel" />
+                <Icon>
+                  <bt:Image size="16" resid="icon16" />
+                  <bt:Image size="32" resid="icon32" />
+                  <bt:Image size="80" resid="icon80" />
+                </Icon>
+
+                <!-- Botón de apertura del panel -->
+                <Control xsi:type="Button" id="btnOpenAddin">
+                  <Label resid="btnLabel" />
+                  <Supertip>
+                    <Title resid="btnLabel" />
+                    <Description resid="btnDesc" />
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="icon16" />
+                    <bt:Image size="32" resid="icon32" />
+                    <bt:Image size="80" resid="icon80" />
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>ButtonId1</TaskpaneId>
+                    <SourceLocation resid="taskpaneUrl" />
+                  </Action>
+                </Control>
+              </Group>
+              <Label resid="tabLabel" />
+            </CustomTab>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+    </Hosts>
+
+    <!-- Recursos de texto y URLs -->
+    <Resources>
+      <bt:Images>
+        <bt:Image id="icon16" DefaultValue="https://oscarnorniella.github.io/Excel-copiado/assets/icon-16.png" />
+        <bt:Image id="icon32" DefaultValue="https://oscarnorniella.github.io/Excel-copiado/assets/icon-32.png" />
+        <bt:Image id="icon80" DefaultValue="https://oscarnorniella.github.io/Excel-copiado/assets/icon-80.png" />
+      </bt:Images>
+      <bt:Urls>
+        <bt:Url id="taskpaneUrl" DefaultValue="https://oscarnorniella.github.io/Excel-copiado/index.html" />
+      </bt:Urls>
+      <bt:ShortStrings>
+        <bt:String id="groupLabel" DefaultValue="Copiado_Tabla" />
+        <bt:String id="tabLabel" DefaultValue="Complemento_Copy" />
+        <bt:String id="btnLabel" DefaultValue="SuperCopy Pro" />
+      </bt:ShortStrings>
+      <bt:LongStrings>
+        <bt:String id="btnDesc" DefaultValue="Exporta rangos de Excel con formato limpio para WhatsApp, Imagen y Correo." />
+      </bt:LongStrings>
+    </Resources>
+  </VersionOverrides>
+</OfficeApp>

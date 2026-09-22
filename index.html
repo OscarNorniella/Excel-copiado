@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SuperCopy Pro</title>
+
+  <!-- Favicon oficial para navegadores -->
+  <link rel="icon" href="assets/icon-32.png" type="image/png" />
+
+  <!-- SDK oficial de Office.js (Línea obligatoria de comunicación con Excel) -->
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+
+  <!-- Estilos del complemento -->
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div class="supercopy-app">
+  <!-- Encabezado Principal -->
+  <header class="app-header">
+    <div class="brand">
+      <span class="badge-tag">PRO</span>
+      <h1 class="app-title">SuperCopy</h1>
+    </div>
+    <p class="app-subtitle">
+      Exporta tu selección de Excel con formato perfecto para cada plataforma.
+    </p>
+  </header>
+
+  <!-- Indicador de Selección Activa -->
+  <section class="selection-card">
+    <div class="selection-meta">
+      <span class="label">Selección actual</span>
+      <span id="range-address" class="value">Detectando...</span>
+    </div>
+    <div class="selection-stats">
+      <span id="range-dimensions" class="badge-stat">0 filas × 0 columnas</span>
+      <button id="btn-refresh" class="btn-icon" title="Actualizar selección">
+        ↻
+      </button>
+    </div>
+  </section>
+
+  <!-- Acciones Principales -->
+  <section class="action-grid">
+    <!-- Copiar para WhatsApp / Chat -->
+    <button id="btn-copy-chat" class="action-card">
+      <div class="action-icon chat-icon">💬</div>
+      <div class="action-info">
+        <span class="action-name">Copiar para WhatsApp / Chat</span>
+        <span class="action-desc"
+          >Texto tabulado monoespaciado que no se desalinea en el móvil.</span
+        >
+      </div>
+    </button>
+
+    <!-- Copiar como Imagen Ejecutiva -->
+    <button id="btn-copy-image" class="action-card">
+      <div class="action-icon image-icon">🖼️</div>
+      <div class="action-info">
+        <span class="action-name">Copiar como Imagen</span>
+        <span class="action-desc"
+          >Captura en alta resolución con diseño ejecutivo y sombra suave.</span
+        >
+      </div>
+    </button>
+
+    <!-- Copiar para Correo / Outlook -->
+    <button id="btn-copy-email" class="action-card">
+      <div class="action-icon email-icon">📧</div>
+      <div class="action-info">
+        <span class="action-name">Copiar para Correo / HTML</span>
+        <span class="action-desc"
+          >Tabla con estilos limpios para Outlook, Gmail o Word.</span
+        >
+      </div>
+    </button>
+  </section>
+
+  <!-- Notificación / Feedback Toast -->
+  <div id="toast" class="toast hidden">
+    <span id="toast-message">Copiado al portapapeles</span>
+  </div>
+
+  <!-- Vista previa opcional -->
+  <details class="preview-accordion">
+    <summary class="preview-toggle">Ver vista previa de datos</summary>
+    <div id="preview-container" class="preview-content">
+      <p class="preview-placeholder">
+        Selecciona un rango en Excel para ver la previsualización.
+      </p>
+    </div>
+  </details>
+</div>
+
+  <!-- Lógica en JavaScript del complemento -->
+  <script src="app.js"></script>
+</body>
+</html>
