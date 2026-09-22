@@ -10,7 +10,7 @@
   <Version>1.0.0.0</Version>
   <ProviderName>INTEF</ProviderName>
   <DefaultLocale>es-ES</DefaultLocale>
-  <DisplayName DefaultValue="SuperCopy Pro" />
+  <DisplayName DefaultValue="TablaCopyPro" />
   <Description DefaultValue="Exporta rangos de Excel con formato limpio para WhatsApp, Imagen y Correo." />
   <IconUrl DefaultValue="https://oscarnorniella.github.io/Excel-copiado/assets/icon-32.png" />
   <HighResolutionIconUrl DefaultValue="https://oscarnorniella.github.io/Excel-copiado/assets/icon-80.png" />
@@ -86,7 +86,7 @@
       <bt:ShortStrings>
         <bt:String id="groupLabel" DefaultValue="Copiado_Tabla" />
         <bt:String id="tabLabel" DefaultValue="Complemento_Copy" />
-        <bt:String id="btnLabel" DefaultValue="SuperCopy Pro" />
+        <bt:String id="btnLabel" DefaultValue="TablaCopyPro" />
       </bt:ShortStrings>
       <bt:LongStrings>
         <bt:String id="btnDesc" DefaultValue="Exporta rangos de Excel con formato limpio para WhatsApp, Imagen y Correo." />

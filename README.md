@@ -1,4 +1,4 @@
-# SuperCopy Pro - Paquete de Despliegue de Excel Add-in
+# TablaCopyPro - Paquete de Despliegue de Excel Add-in
 Generado con ScriptLab to Add-in Studio (INTEF - Inteligencia Eficiente)
 
 🌐 **URL Pública configurada (GitHub Pages / Hosting):**
@@ -28,7 +28,7 @@ Sube `index.html`, `style.css`, `app.js` y la carpeta `assets/` a la raíz de tu
 2. En Excel ve a: **Archivo** ➔ **Opciones** ➔ **Centro de confianza** ➔ **Configuración del Centro de confianza** ➔ **Catálogos de complementos de confianza**.
 3. Escribe la ruta de tu carpeta, haz clic en **Agregar catálogo** y activa la casilla **Mostrar en el menú**.
 4. Reinicia Excel.
-5. Ve a la pestaña **Insertar** ➔ **Mis complementos** ➔ pestaña **Carpeta compartida** y haz clic en **SuperCopy Pro**.
+5. Ve a la pestaña **Insertar** ➔ **Mis complementos** ➔ pestaña **Carpeta compartida** y haz clic en **TablaCopyPro**.
 
 ### 3. Cargar en Excel para la Web (Sideloading rápido):
 1. Abre cualquier libro en [Excel para la Web (office.com)](https://excel.new).
