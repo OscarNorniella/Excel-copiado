@@ -163,6 +163,33 @@ async function handleCopy(mode) {
 }
 
 /**
+ * Calcula el ancho de cada columna según el texto más largo
+ * entre encabezados y filas.
+ */
+function calculateColumnWidths(data, options = {}) {
+  const minWidth = options.minWidth ?? 80;
+  const padding = options.padding ?? 28;
+
+  const widths = [];
+
+  for (let columnIndex = 0; columnIndex < data.colCount; columnIndex++) {
+    let maxLength = 0;
+
+    const headerValue = String(data.headers[columnIndex] ?? "");
+    maxLength = Math.max(maxLength, headerValue.length);
+
+    for (const row of data.rows) {
+      const value = String(row[columnIndex] ?? "");
+      maxLength = Math.max(maxLength, value.length);
+    }
+
+    widths.push(Math.max(minWidth, maxLength + padding));
+  }
+
+  return widths;
+}
+
+/**
  * Copia texto con fallback para navegadores/Excel que no permiten navigator.clipboard.
  */
 async function copyTextToClipboard(text) {
@@ -204,27 +231,28 @@ async function copyTextToClipboard(text) {
 
 /**
  * 1. FORMATO WHATSAPP / CHAT
+ * - ancho automático por contenido
+ * - encabezado centrado
+ * - datos alineados a la izquierda
  */
 async function copyForChat(data) {
-  const allRows = [data.headers, ...data.rows];
-  const colWidths = [];
+  const colWidths = calculateColumnWidths(data, {
+    minWidth: 10,
+    padding: 4
+  });
 
-  for (let c = 0; c < data.colCount; c++) {
-    let max = 0;
-    for (let r = 0; r < allRows.length; r++) {
-      const len = (allRows[r][c] || "").length;
-      if (len > max) max = len;
-    }
-    colWidths.push(Math.max(max, 3));
-  }
+  const centerText = (value, width) => {
+    const text = String(value ?? "");
+    const remaining = Math.max(width - text.length, 0);
+    const leftPadding = Math.floor(remaining / 2);
+    const rightPadding = remaining - leftPadding;
 
-  const formatRow = row => {
-    return row.map((cell, idx) => {
-      const width = colWidths[idx];
-      const val = cell || "";
-      const isNum = isNumeric(val);
-      return isNum ? val.padStart(width, " ") : val.padEnd(width, " ");
-    }).join(" | ");
+    return " ".repeat(leftPadding) + text + " ".repeat(rightPadding);
+  };
+
+  const leftText = (value, width) => {
+    const text = String(value ?? "");
+    return text.padEnd(width, " ");
   };
 
   const cleanAddress = data.address.split("!").pop() || data.address;
@@ -232,17 +260,37 @@ async function copyForChat(data) {
   const badge = getColorBadge(primaryBg);
   const title = `${badge} *TABLA EXCEL (${cleanAddress})*`;
 
-  const headerLine = formatRow(data.headers);
-  const separatorLine = colWidths.map(w => "=".repeat(w)).join("=+=");
-  const dataLines = data.rows.map(row => formatRow(row));
-  const textTable = [headerLine, separatorLine, ...dataLines].join("\n");
-  const output = `${title}\n\`\`\`\n${textTable}\n\`\`\``;
+  const headerLine = data.headers
+    .map((header, index) => centerText(header, colWidths[index]))
+    .join(" | ");
+
+  const separatorLine = colWidths
+    .map(width => "=".repeat(width))
+    .join("=+=");
+
+  const dataLines = data.rows.map(row =>
+    row
+      .map((cell, index) => leftText(cell, colWidths[index]))
+      .join(" | ")
+  );
+
+  const output = [
+    title,
+    "```",
+    headerLine,
+    separatorLine,
+    ...dataLines,
+    "```"
+  ].join("\n");
 
   await copyTextToClipboard(output);
 }
 
 /**
  * 2. FORMATO IMAGEN EJECUTIVA
+ * - ancho automático por contenido
+ * - encabezados centrados
+ * - filas alineadas a la izquierda
  */
 async function copyAsImage(data) {
   if (
@@ -253,11 +301,16 @@ async function copyAsImage(data) {
     throw new Error("Este entorno de Excel no admite copiar imágenes al portapapeles.");
   }
 
+  const colWidths = calculateColumnWidths(data, {
+    minWidth: 80,
+    padding: 28
+  });
+
   const colCount = data.colCount;
   const paddingX = 32;
   const paddingY = 28;
   const rowHeight = 36;
-  const headerHeight = 42;
+  const headerHeight = 46;
   const fontBody = "13px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
   const fontHeader = "600 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
 
@@ -266,21 +319,6 @@ async function copyAsImage(data) {
 
   if (!tempCtx) {
     throw new Error("No se pudo iniciar el contexto 2D del canvas.");
-  }
-
-  tempCtx.font = fontHeader;
-  const colWidths = [];
-
-  for (let c = 0; c < colCount; c++) {
-    let max = tempCtx.measureText(data.headers[c] || "").width;
-    tempCtx.font = fontBody;
-
-    for (let r = 0; r < data.rows.length; r++) {
-      const w = tempCtx.measureText(data.rows[r][c] || "").width;
-      if (w > max) max = w;
-    }
-
-    colWidths.push(Math.ceil(max) + 28);
   }
 
   const tableWidth = colWidths.reduce((a, b) => a + b, 0);
@@ -321,7 +359,7 @@ async function copyAsImage(data) {
 
   let curX = cardX;
   for (let c = 0; c < colCount; c++) {
-    const w = colWidths[c];
+    const width = colWidths[c];
     const style = data.headerStyles[c] || {
       bg: "#0f172a",
       color: "#ffffff",
@@ -329,36 +367,31 @@ async function copyAsImage(data) {
     };
 
     ctx.fillStyle = style.bg;
-    ctx.fillRect(curX, cardY, w, headerHeight);
-    curX += w;
+    ctx.fillRect(curX, cardY, width, headerHeight);
+    curX += width;
   }
 
   ctx.font = fontHeader;
   ctx.textBaseline = "middle";
+  ctx.textAlign = "center";
 
   curX = cardX;
   for (let c = 0; c < colCount; c++) {
-    const w = colWidths[c];
+    const width = colWidths[c];
     const text = data.headers[c] || "";
     const style = data.headerStyles[c] || {
       bg: "#0f172a",
       color: "#ffffff",
       bold: true
     };
-    const isNum = data.rows.length > 0 && isNumeric(data.rows[0][c]);
 
     ctx.fillStyle = style.color;
-    if (isNum) {
-      ctx.textAlign = "right";
-      ctx.fillText(text, curX + w - 14, cardY + headerHeight / 2);
-    } else {
-      ctx.textAlign = "left";
-      ctx.fillText(text, curX + 14, cardY + headerHeight / 2);
-    }
-    curX += w;
+    ctx.fillText(text, curX + width / 2, cardY + headerHeight / 2);
+    curX += width;
   }
 
   ctx.font = fontBody;
+  ctx.textAlign = "left";
 
   for (let r = 0; r < data.rows.length; r++) {
     const rowY = cardY + headerHeight + r * rowHeight;
@@ -377,19 +410,10 @@ async function copyAsImage(data) {
     curX = cardX;
 
     for (let c = 0; c < colCount; c++) {
-      const w = colWidths[c];
-      const val = data.rows[r][c] || "";
-      const isNum = isNumeric(val);
-
-      if (isNum) {
-        ctx.textAlign = "right";
-        ctx.fillText(val, curX + w - 14, rowY + rowHeight / 2);
-      } else {
-        ctx.textAlign = "left";
-        ctx.fillText(val, curX + 14, rowY + rowHeight / 2);
-      }
-
-      curX += w;
+      const width = colWidths[c];
+      const val = String(data.rows[r][c] ?? "");
+      ctx.fillText(val, curX + 14, rowY + rowHeight / 2);
+      curX += width;
     }
   }
 
@@ -417,9 +441,21 @@ async function copyAsImage(data) {
 
 /**
  * 3. FORMATO CORREO / OUTLOOK / HTML
+ * - ancho automático
+ * - encabezados centrados
+ * - filas alineadas a la izquierda
  */
 async function copyForEmail(data) {
-  const tableStyle = "border-collapse: collapse; width: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; color: #1e293b; margin: 8px 0;";
+  const tableStyle = [
+    "border-collapse: collapse",
+    "table-layout: auto",
+    "width: max-content",
+    "max-width: 100%",
+    "font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    "font-size: 13px",
+    "color: #1e293b",
+    "margin: 8px 0"
+  ].join("; ");
 
   let html = `<table style="${tableStyle}"><thead><tr>`;
 
@@ -430,10 +466,17 @@ async function copyForEmail(data) {
       bold: true
     };
 
-    const isNum = data.rows.length > 0 && isNumeric(data.rows[0][idx]);
-    const align = isNum ? "right" : "left";
     const fontWeight = style.bold ? "700" : "600";
-    const thStyle = `background-color: ${style.bg}; color: ${style.color}; font-weight: ${fontWeight}; padding: 10px 14px; text-align: ${align}; border: 1px solid ${style.bg};`;
+    const thStyle = [
+      `background-color: ${style.bg}`,
+      `color: ${style.color}`,
+      `font-weight: ${fontWeight}`,
+      "padding: 10px 14px",
+      "text-align: center",
+      "vertical-align: middle",
+      "white-space: nowrap",
+      `border: 1px solid ${style.bg}`
+    ].join("; ");
 
     html += `<th style="${thStyle}">${escapeHtml(h)}</th>`;
   });
@@ -445,9 +488,14 @@ async function copyForEmail(data) {
     html += `<tr style="background-color: ${bg};">`;
 
     row.forEach(cell => {
-      const isNum = isNumeric(cell);
-      const align = isNum ? "right" : "left";
-      const tdStyle = `padding: 8px 14px; border: 1px solid #e2e8f0; text-align: ${align};`;
+      const tdStyle = [
+        "padding: 8px 14px",
+        "border: 1px solid #e2e8f0",
+        "text-align: left",
+        "vertical-align: middle",
+        "white-space: nowrap"
+      ].join("; ");
+
       html += `<td style="${tdStyle}">${escapeHtml(cell)}</td>`;
     });
 
@@ -494,7 +542,12 @@ function renderPreview(data) {
     return;
   }
 
-  let html = `<table class="preview-table"><thead><tr>`;
+  let html = `
+    <div class="preview-table-wrapper">
+      <table class="preview-table">
+        <thead>
+          <tr>
+  `;
 
   data.headers.forEach((h, idx) => {
     const style = data.headerStyles[idx] || {
@@ -503,15 +556,35 @@ function renderPreview(data) {
       bold: true
     };
 
-    html += `<th style="background-color: ${style.bg}; color: ${style.color};">${escapeHtml(h)}</th>`;
+    html += `
+      <th
+        style="
+          background-color: ${style.bg};
+          color: ${style.color};
+          text-align: center;
+          vertical-align: middle;
+          white-space: nowrap;
+        "
+      >
+        ${escapeHtml(h)}
+      </th>
+    `;
   });
 
-  html += `</tr></thead><tbody>`;
+  html += `
+          </tr>
+        </thead>
+        <tbody>
+  `;
 
   data.rows.slice(0, 5).forEach(r => {
     html += `<tr>`;
     r.forEach(c => {
-      html += `<td>${escapeHtml(c)}</td>`;
+      html += `
+        <td style="text-align: left; vertical-align: middle; white-space: nowrap;">
+          ${escapeHtml(c)}
+        </td>
+      `;
     });
     html += `</tr>`;
   });
@@ -520,7 +593,11 @@ function renderPreview(data) {
     html += `<tr><td colspan="${data.colCount}" style="text-align: center; color: #94a3b8; font-style: italic;">... y ${data.rows.length - 5} filas más</td></tr>`;
   }
 
-  html += `</tbody></table>`;
+  html += `
+        </tbody>
+      </table>
+    </div>
+  `;
   container.innerHTML = html;
 }
 
