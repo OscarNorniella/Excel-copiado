@@ -2,6 +2,11 @@
  * SuperCopy Pro - Complemento para Excel
  * Exporta selecciones de Excel con formato adaptado para WhatsApp, Imagen y Correo.
  * Respeta estilos de fondo y color de fuente del encabezado de Excel.
+ * 
+ * Versión mejorada:
+ * - Mejor manejo del borde derecho de la última columna
+ * - Ajuste automático para tablas muy anchas
+ * - Verificación extra para copiar en Excel Online, Windows y Web
  */
 
 let appInitialized = false;
@@ -229,37 +234,51 @@ function normalizeImageCellValue(value) {
 
 /**
  * Calcula el ancho real de columnas usando measureText() en píxeles.
- * Esto es importante porque Canvas trabaja en píxeles, no en caracteres.
+ * 
+ * PASOS:
+ * 1. Define ancho mínimo (80px) y máximo (500px) para cada columna
+ * 2. Para cada columna, mide el ancho del encabezado (con fuente bold)
+ * 3. Mide el ancho de cada celda del cuerpo (con fuente normal)
+ * 4. Suma el padding izquierdo y derecho (16px + 16px)
+ * 5. Agrega un margen de seguridad (4px) para evitar truncamiento
+ * 6. Aplica los límites min/max
  */
 function calculateImageColumnWidths(data, context, fonts) {
   const minimumWidth = 80;
-  const maximumWidth = 360;
-  const horizontalPadding = 28;
+  const maximumWidth = 500;
+  const paddingLeft = 16;
+  const paddingRight = 16;
+  const safetyMargin = 4;
 
   const widths = [];
 
   for (let columnIndex = 0; columnIndex < data.colCount; columnIndex++) {
     let maximumTextWidth = 0;
 
+    // Paso 1: Medir el encabezado con fuente bold
     context.font = fonts.header;
-    const headerValue = normalizeImageCellValue(data.headers[columnIndex]);
+    const headerValue = normalizeImageCellValue(data.headers[columnIndex] ?? "");
     maximumTextWidth = Math.max(
       maximumTextWidth,
       context.measureText(headerValue).width
     );
 
+    // Paso 2: Medir las celdas del cuerpo
     context.font = fonts.body;
-
     for (const row of data.rows) {
-      const cellValue = normalizeImageCellValue(row[columnIndex]);
+      const cellValue = normalizeImageCellValue(row[columnIndex] ?? "");
       maximumTextWidth = Math.max(
         maximumTextWidth,
         context.measureText(cellValue).width
       );
     }
 
-    const calculatedWidth = Math.ceil(maximumTextWidth + horizontalPadding);
+    // Paso 3: Sumar padding y margen de seguridad
+    const calculatedWidth = Math.ceil(
+      maximumTextWidth + paddingLeft + paddingRight + safetyMargin
+    );
 
+    // Paso 4: Aplicar límites
     widths.push(
       Math.min(Math.max(calculatedWidth, minimumWidth), maximumWidth)
     );
@@ -269,15 +288,28 @@ function calculateImageColumnWidths(data, context, fonts) {
 }
 
 /**
- * Ajusta texto para que no se salga del ancho disponible.
+ * Ajusta el texto para que quepa en el ancho disponible.
+ * 
+ * PASOS:
+ * 1. Si el texto cabe completo, devuelve el texto
+ * 2. Si no cabe, intenta agregar "..." sin exceder el ancho
+ * 3. Si ni "..." cabe, devuelve solo "..."
+ * 4. Si aún así no cabe, recorta el texto progresivamente
  */
 function fitCanvasText(text, maxWidth, context) {
   const value = normalizeImageCellValue(text);
 
+  // Paso 1: Validar entrada
+  if (!value || maxWidth <= 0) {
+    return "";
+  }
+
+  // Paso 2: Si cabe completo, devolverlo
   if (context.measureText(value).width <= maxWidth) {
     return value;
   }
 
+  // Paso 3: Calcular el ancho de los puntos suspensivos
   const ellipsis = "...";
   const ellipsisWidth = context.measureText(ellipsis).width;
 
@@ -285,12 +317,13 @@ function fitCanvasText(text, maxWidth, context) {
     return ellipsis;
   }
 
+  // Paso 4: Recortar caracteres hasta que quepa con "..."
   let result = "";
-
   for (const character of value) {
     const candidate = result + character;
+    const candidateWidth = context.measureText(candidate).width;
 
-    if (context.measureText(candidate).width + ellipsisWidth > maxWidth) {
+    if (candidateWidth + ellipsisWidth > maxWidth) {
       break;
     }
 
@@ -406,7 +439,6 @@ async function copyForChat(data) {
 
   const dataLines = data.rows.map(row => {
     const normalizedRow = row.map(value => normalizeCellValue(value));
-
     return normalizedRow
       .map((cell, index) => leftText(cell, colWidths[index]))
       .join(" | ");
@@ -427,9 +459,14 @@ async function copyForChat(data) {
 
 /**
  * 2. FORMATO IMAGEN EJECUTIVA
- * - ancho automático en píxeles según contenido real
- * - encabezados centrados
- * - filas alineadas a la izquierda
+ * 
+ * PASOS PRINCIPALES:
+ * 1. Validar que el navegador soporta clipboard de imágenes
+ * 2. Crear canvas auxiliar para medir texto exactamente
+ * 3. Calcular ancho de cada columna en píxeles
+ * 4. Crear canvas final con dimensiones exactas (sin truncamiento)
+ * 5. Dibujar tabla con encabezados coloreados y filas alternadas
+ * 6. Convertir canvas a PNG y copiar al portapapeles
  */
 async function copyAsImage(data) {
   if (
@@ -442,16 +479,19 @@ async function copyAsImage(data) {
 
   const colCount = data.colCount;
 
+  // Dimensiones de la imagen
   const paddingX = 32;
   const paddingY = 28;
   const headerHeight = 48;
   const rowHeight = 38;
+  const canvasSafetyMargin = 16; // Margen extra para evitar truncamiento en el borde derecho
 
   const fonts = {
     body: "13px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
     header: "600 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
   };
 
+  // PASO 1: Canvas de medición
   const measuringCanvas = document.createElement("canvas");
   const measuringContext = measuringCanvas.getContext("2d");
 
@@ -459,36 +499,50 @@ async function copyAsImage(data) {
     throw new Error("No se pudo iniciar el contexto de medición del canvas.");
   }
 
+  // PASO 2: Calcular ancho de columnas
   const columnWidths = calculateImageColumnWidths(data, measuringContext, fonts);
 
+  // PASO 3: Calcular dimensiones totales del canvas
   const tableWidth = columnWidths.reduce((total, width) => total + width, 0);
-  const totalWidth = tableWidth + paddingX * 2;
-  const totalHeight = paddingY * 2 + headerHeight + data.rows.length * rowHeight;
+  const totalWidth = Math.ceil(tableWidth + paddingX * 2 + canvasSafetyMargin);
+  const totalHeight = Math.ceil(
+    paddingY * 2 + headerHeight + data.rows.length * rowHeight
+  );
 
+  // PASO 4: Crear canvas final con escala 2x para nitidez
   const scale = 2;
 
   const canvas = document.createElement("canvas");
-  canvas.width = totalWidth * scale;
-  canvas.height = totalHeight * scale;
+  canvas.width = Math.ceil(totalWidth * scale);
+  canvas.height = Math.ceil(totalHeight * scale);
 
-  const context = canvas.getContext("2d");
+  // Propiedades CSS para compatibilidad con Excel Online/Web
+  canvas.style.width = `${totalWidth}px`;
+  canvas.style.height = `${totalHeight}px`;
+
+  const context = canvas.getContext("2d", { alpha: true });
 
   if (!context) {
     throw new Error("No se pudo crear el contexto gráfico del canvas.");
   }
 
-  context.scale(scale, scale);
+  // Aplicar escala sin acumular transformaciones
+  context.setTransform(scale, 0, 0, scale, 0, 0);
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
 
+  // PASO 5: Dibujar fondo general
   context.fillStyle = "#f8fafc";
   context.fillRect(0, 0, totalWidth, totalHeight);
 
+  // Dimensiones de la tarjeta interna
   const cardX = paddingX;
   const cardY = paddingY;
   const cardWidth = tableWidth;
   const cardHeight = headerHeight + data.rows.length * rowHeight;
-
   const radius = 10;
 
+  // Dibujar borde y fondo de la tarjeta
   drawRoundedRect(context, cardX, cardY, cardWidth, cardHeight, radius);
   context.fillStyle = "#ffffff";
   context.fill();
@@ -497,13 +551,13 @@ async function copyAsImage(data) {
   context.lineWidth = 1;
   context.stroke();
 
+  // Guardar estado para aplicar clip path
   context.save();
-
   drawRoundedRect(context, cardX, cardY, cardWidth, cardHeight, radius);
   context.clip();
 
+  // Dibujar fondos del encabezado
   let currentX = cardX;
-
   for (let columnIndex = 0; columnIndex < colCount; columnIndex++) {
     const columnWidth = columnWidths[columnIndex];
     const style = data.headerStyles[columnIndex] || {
@@ -514,16 +568,15 @@ async function copyAsImage(data) {
 
     context.fillStyle = style.bg;
     context.fillRect(currentX, cardY, columnWidth, headerHeight);
-
     currentX += columnWidth;
   }
 
+  // Dibujar texto del encabezado
   context.font = fonts.header;
   context.textBaseline = "middle";
   context.textAlign = "center";
 
   currentX = cardX;
-
   for (let columnIndex = 0; columnIndex < colCount; columnIndex++) {
     const columnWidth = columnWidths[columnIndex];
     const style = data.headerStyles[columnIndex] || {
@@ -532,9 +585,13 @@ async function copyAsImage(data) {
       bold: true
     };
 
+    const paddingLeft = 16;
+    const paddingRight = 16;
+    const availableTextWidth = Math.max(columnWidth - paddingLeft - paddingRight, 1);
+
     const headerText = fitCanvasText(
-      data.headers[columnIndex],
-      columnWidth - 20,
+      data.headers[columnIndex] ?? "",
+      availableTextWidth,
       context
     );
 
@@ -548,6 +605,7 @@ async function copyAsImage(data) {
     currentX += columnWidth;
   }
 
+  // Dibujar filas del cuerpo
   context.font = fonts.body;
   context.textBaseline = "middle";
   context.textAlign = "left";
@@ -556,31 +614,37 @@ async function copyAsImage(data) {
     const rowY = cardY + headerHeight + rowIndex * rowHeight;
     const isEvenRow = rowIndex % 2 === 1;
 
+    // Fondo alterno
     context.fillStyle = isEvenRow ? "#f8fafc" : "#ffffff";
     context.fillRect(cardX, rowY, cardWidth, rowHeight);
 
+    // Línea separadora
     context.strokeStyle = "#f1f5f9";
+    context.lineWidth = 1;
     context.beginPath();
     context.moveTo(cardX, rowY);
     context.lineTo(cardX + cardWidth, rowY);
     context.stroke();
 
+    // Texto de celdas
     context.fillStyle = "#1e293b";
     currentX = cardX;
 
     for (let columnIndex = 0; columnIndex < colCount; columnIndex++) {
       const columnWidth = columnWidths[columnIndex];
-      const availableTextWidth = columnWidth - 28;
-
-      const cellText = fitCanvasText(
-        data.rows[rowIndex][columnIndex],
-        availableTextWidth,
-        context
+      const paddingLeft = 16;
+      const paddingRight = 16;
+      const availableTextWidth = Math.max(
+        columnWidth - paddingLeft - paddingRight,
+        1
       );
+
+      const cellValue = data.rows[rowIndex]?.[columnIndex] ?? "";
+      const cellText = fitCanvasText(cellValue, availableTextWidth, context);
 
       context.fillText(
         cellText,
-        currentX + 14,
+        currentX + paddingLeft,
         rowY + rowHeight / 2
       );
 
@@ -588,26 +652,33 @@ async function copyAsImage(data) {
     }
   }
 
+  // Restaurar contexto
   context.restore();
 
+  // PASO 6: Convertir a PNG y copiar
   return new Promise((resolve, reject) => {
-    canvas.toBlob(async blob => {
-      if (!blob) {
-        reject(new Error("No se pudo generar el blob de la imagen."));
-        return;
-      }
+    canvas.toBlob(
+      async blob => {
+        if (!blob) {
+          reject(new Error("No se pudo generar el blob de la imagen."));
+          return;
+        }
 
-      try {
-        const item = new ClipboardItem({
-          "image/png": blob
-        });
+        try {
+          const item = new ClipboardItem({
+            "image/png": blob
+          });
 
-        await navigator.clipboard.write([item]);
-        resolve();
-      } catch (error) {
-        reject(error);
-      }
-    }, "image/png");
+          await navigator.clipboard.write([item]);
+          resolve();
+        } catch (error) {
+          console.error("Error al escribir en portapapeles:", error);
+          reject(error);
+        }
+      },
+      "image/png",
+      1.0 // Calidad máxima
+    );
   });
 }
 
