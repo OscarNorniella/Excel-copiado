@@ -275,7 +275,7 @@ body {
 
 .preview-content {
   padding: 12px;
-  max-height: 220px;
+  max-height: 240px;
   overflow: auto;
 }
 
@@ -290,6 +290,7 @@ body {
 .preview-table-wrapper {
   width: 100%;
   overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .preview-table {
@@ -298,6 +299,7 @@ body {
   border-collapse: collapse;
   table-layout: auto;
   font-size: 11px;
+  color: var(--text-main);
 }
 
 .preview-table th,
@@ -305,6 +307,7 @@ body {
   padding: 8px 12px;
   border: 1px solid var(--border-color);
   white-space: nowrap;
+  vertical-align: middle;
 }
 
 .preview-table th {
@@ -316,8 +319,20 @@ body {
 .preview-table td {
   text-align: left;
   vertical-align: middle;
+  font-weight: 400;
 }
 
 .preview-table tbody tr:nth-child(even) {
   background-color: #f8fafc;
+}
+
+.preview-table tbody tr:hover {
+  background-color: #eff6ff;
+}
+
+.preview-more {
+  color: #94a3b8;
+  font-style: italic;
+  text-align: center !important;
+  padding: 10px !important;
 }

@@ -163,30 +163,179 @@ async function handleCopy(mode) {
 }
 
 /**
- * Calcula el ancho de cada columna según el texto más largo
- * entre encabezados y filas.
+ * Normaliza el valor para evitar saltos de línea y espacios extra.
+ */
+function normalizeCellValue(value) {
+  return String(value ?? "")
+    .replace(/\r\n/g, " ")
+    .replace(/\r/g, " ")
+    .replace(/\n/g, " ")
+    .trim();
+}
+
+/**
+ * Devuelve la línea más larga de un texto para calcular ancho.
+ */
+function getLongestLineLength(value) {
+  const text = normalizeCellValue(value);
+  return text.length;
+}
+
+/**
+ * Calcula el ancho de cada columna para el texto (modo WhatsApp / Chat).
  */
 function calculateColumnWidths(data, options = {}) {
-  const minWidth = options.minWidth ?? 80;
-  const padding = options.padding ?? 28;
+  const minWidth = options.minWidth ?? 5;
+  const horizontalPadding = options.horizontalPadding ?? 2;
+  const maxWidth = options.maxWidth ?? 40;
 
   const widths = [];
 
   for (let columnIndex = 0; columnIndex < data.colCount; columnIndex++) {
-    let maxLength = 0;
+    let longestValue = 0;
 
-    const headerValue = String(data.headers[columnIndex] ?? "");
-    maxLength = Math.max(maxLength, headerValue.length);
+    const headerValue = data.headers[columnIndex] ?? "";
+    longestValue = Math.max(
+      longestValue,
+      getLongestLineLength(headerValue)
+    );
 
     for (const row of data.rows) {
-      const value = String(row[columnIndex] ?? "");
-      maxLength = Math.max(maxLength, value.length);
+      const value = row[columnIndex] ?? "";
+      longestValue = Math.max(
+        longestValue,
+        getLongestLineLength(value)
+      );
     }
 
-    widths.push(Math.max(minWidth, maxLength + padding));
+    const calculatedWidth = longestValue + horizontalPadding * 2;
+
+    widths.push(Math.min(Math.max(calculatedWidth, minWidth), maxWidth));
   }
 
   return widths;
+}
+
+/**
+ * Normaliza los datos para formato de imagen (Canvas).
+ */
+function normalizeImageCellValue(value) {
+  return String(value ?? "")
+    .replace(/\r\n/g, " ")
+    .replace(/\r/g, " ")
+    .replace(/\n/g, " ")
+    .trim();
+}
+
+/**
+ * Calcula el ancho real de columnas usando measureText() en píxeles.
+ * Esto es importante porque Canvas trabaja en píxeles, no en caracteres.
+ */
+function calculateImageColumnWidths(data, context, fonts) {
+  const minimumWidth = 80;
+  const maximumWidth = 360;
+  const horizontalPadding = 28;
+
+  const widths = [];
+
+  for (let columnIndex = 0; columnIndex < data.colCount; columnIndex++) {
+    let maximumTextWidth = 0;
+
+    context.font = fonts.header;
+    const headerValue = normalizeImageCellValue(data.headers[columnIndex]);
+    maximumTextWidth = Math.max(
+      maximumTextWidth,
+      context.measureText(headerValue).width
+    );
+
+    context.font = fonts.body;
+
+    for (const row of data.rows) {
+      const cellValue = normalizeImageCellValue(row[columnIndex]);
+      maximumTextWidth = Math.max(
+        maximumTextWidth,
+        context.measureText(cellValue).width
+      );
+    }
+
+    const calculatedWidth = Math.ceil(maximumTextWidth + horizontalPadding);
+
+    widths.push(
+      Math.min(Math.max(calculatedWidth, minimumWidth), maximumWidth)
+    );
+  }
+
+  return widths;
+}
+
+/**
+ * Ajusta texto para que no se salga del ancho disponible.
+ */
+function fitCanvasText(text, maxWidth, context) {
+  const value = normalizeImageCellValue(text);
+
+  if (context.measureText(value).width <= maxWidth) {
+    return value;
+  }
+
+  const ellipsis = "...";
+  const ellipsisWidth = context.measureText(ellipsis).width;
+
+  if (ellipsisWidth >= maxWidth) {
+    return ellipsis;
+  }
+
+  let result = "";
+
+  for (const character of value) {
+    const candidate = result + character;
+
+    if (context.measureText(candidate).width + ellipsisWidth > maxWidth) {
+      break;
+    }
+
+    result = candidate;
+  }
+
+  return `${result.trimEnd()}${ellipsis}`;
+}
+
+/**
+ * Recorta texto largo para la tabla de WhatsApp.
+ */
+function fitText(value, width) {
+  const text = normalizeCellValue(value);
+
+  if (text.length <= width) {
+    return text;
+  }
+
+  if (width <= 3) {
+    return text.substring(0, width);
+  }
+
+  return `${text.substring(0, width - 3)}...`;
+}
+
+/**
+ * Centra texto dentro del ancho de la columna.
+ */
+function centerText(value, width) {
+  const text = fitText(value, width);
+  const remaining = Math.max(width - text.length, 0);
+
+  const leftPadding = Math.floor(remaining / 2);
+  const rightPadding = remaining - leftPadding;
+
+  return " ".repeat(leftPadding) + text + " ".repeat(rightPadding);
+}
+
+/**
+ * Alinea a la izquierda dentro del ancho de la columna.
+ */
+function leftText(value, width) {
+  const text = fitText(value, width);
+  return text.padEnd(width, " ");
 }
 
 /**
@@ -232,28 +381,15 @@ async function copyTextToClipboard(text) {
 /**
  * 1. FORMATO WHATSAPP / CHAT
  * - ancho automático por contenido
- * - encabezado centrado
- * - datos alineados a la izquierda
+ * - encabezados centrados
+ * - filas alineadas a la izquierda
  */
 async function copyForChat(data) {
   const colWidths = calculateColumnWidths(data, {
-    minWidth: 10,
-    padding: 4
+    minWidth: 7,
+    horizontalPadding: 1,
+    maxWidth: 40
   });
-
-  const centerText = (value, width) => {
-    const text = String(value ?? "");
-    const remaining = Math.max(width - text.length, 0);
-    const leftPadding = Math.floor(remaining / 2);
-    const rightPadding = remaining - leftPadding;
-
-    return " ".repeat(leftPadding) + text + " ".repeat(rightPadding);
-  };
-
-  const leftText = (value, width) => {
-    const text = String(value ?? "");
-    return text.padEnd(width, " ");
-  };
 
   const cleanAddress = data.address.split("!").pop() || data.address;
   const primaryBg = data.headerStyles[0]?.bg || "#0f172a";
@@ -268,15 +404,18 @@ async function copyForChat(data) {
     .map(width => "=".repeat(width))
     .join("=+=");
 
-  const dataLines = data.rows.map(row =>
-    row
+  const dataLines = data.rows.map(row => {
+    const normalizedRow = row.map(value => normalizeCellValue(value));
+
+    return normalizedRow
       .map((cell, index) => leftText(cell, colWidths[index]))
-      .join(" | ")
-  );
+      .join(" | ");
+  });
 
   const output = [
     title,
-    "```",
+    "",
+    "```text",
     headerLine,
     separatorLine,
     ...dataLines,
@@ -288,7 +427,7 @@ async function copyForChat(data) {
 
 /**
  * 2. FORMATO IMAGEN EJECUTIVA
- * - ancho automático por contenido
+ * - ancho automático en píxeles según contenido real
  * - encabezados centrados
  * - filas alineadas a la izquierda
  */
@@ -301,123 +440,155 @@ async function copyAsImage(data) {
     throw new Error("Este entorno de Excel no admite copiar imágenes al portapapeles.");
   }
 
-  const colWidths = calculateColumnWidths(data, {
-    minWidth: 80,
-    padding: 28
-  });
-
   const colCount = data.colCount;
+
   const paddingX = 32;
   const paddingY = 28;
-  const rowHeight = 36;
-  const headerHeight = 46;
-  const fontBody = "13px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-  const fontHeader = "600 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+  const headerHeight = 48;
+  const rowHeight = 38;
 
-  const tempCanvas = document.createElement("canvas");
-  const tempCtx = tempCanvas.getContext("2d");
+  const fonts = {
+    body: "13px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    header: "600 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+  };
 
-  if (!tempCtx) {
-    throw new Error("No se pudo iniciar el contexto 2D del canvas.");
+  const measuringCanvas = document.createElement("canvas");
+  const measuringContext = measuringCanvas.getContext("2d");
+
+  if (!measuringContext) {
+    throw new Error("No se pudo iniciar el contexto de medición del canvas.");
   }
 
-  const tableWidth = colWidths.reduce((a, b) => a + b, 0);
+  const columnWidths = calculateImageColumnWidths(data, measuringContext, fonts);
+
+  const tableWidth = columnWidths.reduce((total, width) => total + width, 0);
   const totalWidth = tableWidth + paddingX * 2;
   const totalHeight = paddingY * 2 + headerHeight + data.rows.length * rowHeight;
 
   const scale = 2;
+
   const canvas = document.createElement("canvas");
   canvas.width = totalWidth * scale;
   canvas.height = totalHeight * scale;
 
-  const ctx = canvas.getContext("2d");
-  if (!ctx) {
-    throw new Error("Error de contexto en canvas final.");
+  const context = canvas.getContext("2d");
+
+  if (!context) {
+    throw new Error("No se pudo crear el contexto gráfico del canvas.");
   }
 
-  ctx.scale(scale, scale);
+  context.scale(scale, scale);
 
-  ctx.fillStyle = "#f8fafc";
-  ctx.fillRect(0, 0, totalWidth, totalHeight);
+  context.fillStyle = "#f8fafc";
+  context.fillRect(0, 0, totalWidth, totalHeight);
 
   const cardX = paddingX;
   const cardY = paddingY;
-  const cardW = tableWidth;
-  const cardH = headerHeight + data.rows.length * rowHeight;
+  const cardWidth = tableWidth;
+  const cardHeight = headerHeight + data.rows.length * rowHeight;
+
   const radius = 10;
 
-  drawRoundedRect(ctx, cardX, cardY, cardW, cardH, radius);
-  ctx.fillStyle = "#ffffff";
-  ctx.fill();
-  ctx.strokeStyle = "#e2e8f0";
-  ctx.lineWidth = 1;
-  ctx.stroke();
+  drawRoundedRect(context, cardX, cardY, cardWidth, cardHeight, radius);
+  context.fillStyle = "#ffffff";
+  context.fill();
 
-  ctx.save();
-  drawRoundedRect(ctx, cardX, cardY, cardW, cardH, radius);
-  ctx.clip();
+  context.strokeStyle = "#e2e8f0";
+  context.lineWidth = 1;
+  context.stroke();
 
-  let curX = cardX;
-  for (let c = 0; c < colCount; c++) {
-    const width = colWidths[c];
-    const style = data.headerStyles[c] || {
+  context.save();
+
+  drawRoundedRect(context, cardX, cardY, cardWidth, cardHeight, radius);
+  context.clip();
+
+  let currentX = cardX;
+
+  for (let columnIndex = 0; columnIndex < colCount; columnIndex++) {
+    const columnWidth = columnWidths[columnIndex];
+    const style = data.headerStyles[columnIndex] || {
       bg: "#0f172a",
       color: "#ffffff",
       bold: true
     };
 
-    ctx.fillStyle = style.bg;
-    ctx.fillRect(curX, cardY, width, headerHeight);
-    curX += width;
+    context.fillStyle = style.bg;
+    context.fillRect(currentX, cardY, columnWidth, headerHeight);
+
+    currentX += columnWidth;
   }
 
-  ctx.font = fontHeader;
-  ctx.textBaseline = "middle";
-  ctx.textAlign = "center";
+  context.font = fonts.header;
+  context.textBaseline = "middle";
+  context.textAlign = "center";
 
-  curX = cardX;
-  for (let c = 0; c < colCount; c++) {
-    const width = colWidths[c];
-    const text = data.headers[c] || "";
-    const style = data.headerStyles[c] || {
+  currentX = cardX;
+
+  for (let columnIndex = 0; columnIndex < colCount; columnIndex++) {
+    const columnWidth = columnWidths[columnIndex];
+    const style = data.headerStyles[columnIndex] || {
       bg: "#0f172a",
       color: "#ffffff",
       bold: true
     };
 
-    ctx.fillStyle = style.color;
-    ctx.fillText(text, curX + width / 2, cardY + headerHeight / 2);
-    curX += width;
+    const headerText = fitCanvasText(
+      data.headers[columnIndex],
+      columnWidth - 20,
+      context
+    );
+
+    context.fillStyle = style.color;
+    context.fillText(
+      headerText,
+      currentX + columnWidth / 2,
+      cardY + headerHeight / 2
+    );
+
+    currentX += columnWidth;
   }
 
-  ctx.font = fontBody;
-  ctx.textAlign = "left";
+  context.font = fonts.body;
+  context.textBaseline = "middle";
+  context.textAlign = "left";
 
-  for (let r = 0; r < data.rows.length; r++) {
-    const rowY = cardY + headerHeight + r * rowHeight;
-    const isEven = r % 2 === 1;
+  for (let rowIndex = 0; rowIndex < data.rows.length; rowIndex++) {
+    const rowY = cardY + headerHeight + rowIndex * rowHeight;
+    const isEvenRow = rowIndex % 2 === 1;
 
-    ctx.fillStyle = isEven ? "#f8fafc" : "#ffffff";
-    ctx.fillRect(cardX, rowY, cardW, rowHeight);
+    context.fillStyle = isEvenRow ? "#f8fafc" : "#ffffff";
+    context.fillRect(cardX, rowY, cardWidth, rowHeight);
 
-    ctx.strokeStyle = "#f1f5f9";
-    ctx.beginPath();
-    ctx.moveTo(cardX, rowY);
-    ctx.lineTo(cardX + cardW, rowY);
-    ctx.stroke();
+    context.strokeStyle = "#f1f5f9";
+    context.beginPath();
+    context.moveTo(cardX, rowY);
+    context.lineTo(cardX + cardWidth, rowY);
+    context.stroke();
 
-    ctx.fillStyle = "#1e293b";
-    curX = cardX;
+    context.fillStyle = "#1e293b";
+    currentX = cardX;
 
-    for (let c = 0; c < colCount; c++) {
-      const width = colWidths[c];
-      const val = String(data.rows[r][c] ?? "");
-      ctx.fillText(val, curX + 14, rowY + rowHeight / 2);
-      curX += width;
+    for (let columnIndex = 0; columnIndex < colCount; columnIndex++) {
+      const columnWidth = columnWidths[columnIndex];
+      const availableTextWidth = columnWidth - 28;
+
+      const cellText = fitCanvasText(
+        data.rows[rowIndex][columnIndex],
+        availableTextWidth,
+        context
+      );
+
+      context.fillText(
+        cellText,
+        currentX + 14,
+        rowY + rowHeight / 2
+      );
+
+      currentX += columnWidth;
     }
   }
 
-  ctx.restore();
+  context.restore();
 
   return new Promise((resolve, reject) => {
     canvas.toBlob(async blob => {
@@ -430,10 +601,11 @@ async function copyAsImage(data) {
         const item = new ClipboardItem({
           "image/png": blob
         });
+
         await navigator.clipboard.write([item]);
         resolve();
-      } catch (err) {
-        reject(err);
+      } catch (error) {
+        reject(error);
       }
     }, "image/png");
   });
@@ -478,7 +650,7 @@ async function copyForEmail(data) {
       `border: 1px solid ${style.bg}`
     ].join("; ");
 
-    html += `<th style="${thStyle}">${escapeHtml(h)}</th>`;
+    html += `<th style="${thStyle}">${escapeHtml(normalizeCellValue(h))}</th>`;
   });
 
   html += `</tr></thead><tbody>`;
@@ -496,7 +668,7 @@ async function copyForEmail(data) {
         "white-space: nowrap"
       ].join("; ");
 
-      html += `<td style="${tdStyle}">${escapeHtml(cell)}</td>`;
+      html += `<td style="${tdStyle}">${escapeHtml(normalizeCellValue(cell))}</td>`;
     });
 
     html += `</tr>`;
@@ -504,7 +676,10 @@ async function copyForEmail(data) {
 
   html += `</tbody></table>`;
 
-  const plainText = [data.headers.join("\t"), ...data.rows.map(r => r.join("\t"))].join("\n");
+  const plainText = [
+    data.headers.map(normalizeCellValue).join("\t"),
+    ...data.rows.map(r => r.map(normalizeCellValue).join("\t"))
+  ].join("\n");
 
   if (
     navigator.clipboard &&
@@ -566,7 +741,7 @@ function renderPreview(data) {
           white-space: nowrap;
         "
       >
-        ${escapeHtml(h)}
+        ${escapeHtml(normalizeCellValue(h))}
       </th>
     `;
   });
@@ -577,12 +752,14 @@ function renderPreview(data) {
         <tbody>
   `;
 
-  data.rows.slice(0, 5).forEach(r => {
-    html += `<tr>`;
-    r.forEach(c => {
+  data.rows.slice(0, 5).forEach((row, rowIndex) => {
+    const bg = rowIndex % 2 === 1 ? "#f8fafc" : "#ffffff";
+
+    html += `<tr style="background-color: ${bg};">`;
+    row.forEach(cell => {
       html += `
         <td style="text-align: left; vertical-align: middle; white-space: nowrap;">
-          ${escapeHtml(c)}
+          ${escapeHtml(normalizeCellValue(cell))}
         </td>
       `;
     });
@@ -598,11 +775,12 @@ function renderPreview(data) {
       </table>
     </div>
   `;
+
   container.innerHTML = html;
 }
 
 /**
- * Dibuja un rectángulo con esquinas redondeadas en Canvas
+ * Dibuja un rectángulo con esquinas redondeadas en Canvas.
  */
 function drawRoundedRect(ctx, x, y, w, h, radius) {
   ctx.beginPath();
@@ -619,7 +797,7 @@ function drawRoundedRect(ctx, x, y, w, h, radius) {
 }
 
 /**
- * Muestra notificación flotante
+ * Muestra notificación flotante.
  */
 let toastTimeout;
 
